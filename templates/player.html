@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mente Alveare Radio</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070a12;
+      --panel: #111827;
+      --panel-soft: #172033;
+      --text: #f7f7fb;
+      --muted: #9da8bd;
+      --line: #263149;
+      --hot: #ffca7a;
+      --accent: #8ee6ff;
+      --accent-2: #d99cff;
+      --danger: #ff8a8a;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 12% 8%, #263a72 0, transparent 30%),
+        radial-gradient(circle at 88% 18%, #5d2f68 0, transparent 28%),
+        linear-gradient(160deg, #070a12 0%, #101421 56%, #090b11 100%);
+      color: var(--text);
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: linear-gradient(#ffffff08 1px, transparent 1px), linear-gradient(90deg, #ffffff08 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: linear-gradient(to bottom, #000 0%, transparent 76%);
+    }
+
+    .shell {
+      width: min(100%, 980px);
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 10px 2px 22px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .logo {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      border-radius: 15px;
+      background: linear-gradient(135deg, var(--hot), var(--accent-2));
+      color: #161019;
+      font-weight: 950;
+      letter-spacing: -0.08em;
+      box-shadow: 0 10px 30px #0008;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: clamp(18px, 5vw, 25px);
+      line-height: 1;
+      letter-spacing: -0.04em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .brand p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .connection {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 9px 12px;
+      background: #0b1020aa;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: #68758f;
+      box-shadow: 0 0 0 4px #68758f22;
+    }
+
+    .connection.is-live .dot {
+      background: #70f0a4;
+      box-shadow: 0 0 0 4px #70f0a422, 0 0 18px #70f0a4aa;
+    }
+
+    main {
+      display: grid;
+      gap: 16px;
+    }
+
+    .player {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid #ffffff1a;
+      border-radius: 30px;
+      padding: clamp(22px, 6vw, 44px);
+      background: linear-gradient(150deg, #151d30f2, #0a0e18f2 70%);
+      box-shadow: 0 30px 90px #0009;
+    }
+
+    .player::after {
+      content: "";
+      position: absolute;
+      width: 220px;
+      height: 220px;
+      right: -84px;
+      top: -72px;
+      border-radius: 999px;
+      background: radial-gradient(circle, #8ee6ff33, transparent 68%);
+    }
+
+    .eyebrow {
+      margin: 0 0 12px;
+      color: var(--hot);
+      font-size: 12px;
+      font-weight: 850;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .track-title {
+      position: relative;
+      z-index: 1;
+      min-height: 2.4em;
+      margin: 0;
+      font-size: clamp(34px, 11vw, 72px);
+      line-height: 0.94;
+      letter-spacing: -0.07em;
+      overflow-wrap: anywhere;
+    }
+
+    .track-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 22px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .progress-wrap { margin-top: 20px; }
+
+    .progress {
+      width: 100%;
+      height: 14px;
+      overflow: hidden;
+      border: 1px solid #ffffff10;
+      border-radius: 999px;
+      background: #050812;
+    }
+
+    .progress-fill {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--hot));
+      box-shadow: 0 0 24px #8ee6ff80;
+    }
+
+    .time-row {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .controls {
+      display: grid;
+      gap: 16px;
+      margin-top: 26px;
+    }
+
+    .play-button {
+      width: 100%;
+      min-height: 62px;
+      border: 0;
+      border-radius: 22px;
+      background: linear-gradient(135deg, #ffffff, #dfe9ff);
+      color: #0b1020;
+      font-size: 18px;
+      font-weight: 950;
+      cursor: pointer;
+      box-shadow: 0 18px 46px #0007;
+    }
+
+    .play-button:hover { transform: translateY(-1px); }
+    .play-button:active { transform: translateY(1px); }
+
+    .volume-card {
+      display: grid;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 14px;
+      background: #070b15aa;
+    }
+
+    .volume-label {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .message {
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .message.is-error { color: var(--danger); }
+
+    .retry {
+      display: none;
+      width: 100%;
+      border: 1px solid #ffffff2a;
+      border-radius: 16px;
+      padding: 13px 16px;
+      background: #ffffff12;
+      color: var(--text);
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .retry.is-visible { display: block; }
+
+    button:focus-visible,
+    input:focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 4px;
+    }
+
+    audio { display: none; }
+
+    @media (min-width: 720px) {
+      .shell { padding: 34px; }
+      main { grid-template-columns: 1fr; }
+      .controls { grid-template-columns: minmax(220px, 0.85fr) 1fr; align-items: center; }
+      .message, .retry { grid-column: 1 / -1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand" aria-label="Mente Alveare Radio">
+        <div class="logo" aria-hidden="true">MA</div>
+        <div>
+          <h1>Mente Alveare Radio</h1>
+          <p>stream MP3 sincronizzato</p>
+        </div>
+      </div>
+      <div id="connection" class="connection" aria-live="polite">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="connectionText">riconnessione...</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="player" aria-labelledby="nowPlayingLabel">
+        <p id="nowPlayingLabel" class="eyebrow">Now playing</p>
+        <h2 id="title" class="track-title">Caricamento radio...</h2>
+        <div class="track-meta">
+          <span id="index">0 / 0</span>
+          <span id="livePosition">live sync</span>
+        </div>
+
+        <div class="progress-wrap" aria-label="Avanzamento brano">
+          <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progressBar">
+            <div id="fill" class="progress-fill"></div>
+          </div>
+          <div class="time-row">
+            <span id="elapsed">0:00</span>
+            <span id="duration">0:00</span>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button id="playPause" class="play-button" type="button" aria-label="Avvia la radio">Play</button>
+          <div class="volume-card">
+            <label class="volume-label" for="volume">
+              <span>Volume</span>
+              <span id="volumeValue">70%</span>
+            </label>
+            <input id="volume" type="range" min="0" max="1" step="0.01" value="0.7" aria-label="Volume player">
+          </div>
+          <div id="message" class="message" role="status" aria-live="polite">Pronto per la sincronizzazione.</div>
+          <button id="retry" class="retry" type="button" aria-label="Riprova riproduzione">Riprova riproduzione</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <audio id="audio" preload="metadata"></audio>
+  <script src="/static/js/socket.io.min.js"></script>
+  <script>
+    const socket = io();
+    const audio = document.getElementById('audio');
+    const title = document.getElementById('title');
+    const index = document.getElementById('index');
+    const fill = document.getElementById('fill');
+    const elapsed = document.getElementById('elapsed');
+    const duration = document.getElementById('duration');
+    const progressBar = document.getElementById('progressBar');
+    const playPause = document.getElementById('playPause');
+    const volume = document.getElementById('volume');
+    const volumeValue = document.getElementById('volumeValue');
+    const connection = document.getElementById('connection');
+    const connectionText = document.getElementById('connectionText');
+    const message = document.getElementById('message');
+    const retry = document.getElementById('retry');
+    const livePosition = document.getElementById('livePosition');
+
+    let currentState = null;
+    let clockOffset = 0;
+    let userRequestedPlay = false;
+    let animationFrame = null;
+
+    audio.volume = 0.7;
+
+    function nowSeconds() {
+      return Date.now() / 1000 + clockOffset;
+    }
+
+    function targetPosition() {
+      if (!currentState || !currentState.track) return 0;
+      return Math.max(0, Math.min(currentState.duration || 0, nowSeconds() - currentState.started_at));
+    }
+
+    function formatTime(value) {
+      const seconds = Math.max(0, Math.floor(value || 0));
+      const minutes = Math.floor(seconds / 60);
+      return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
+    }
+
+    function setMessage(text, isError = false) {
+      message.textContent = text;
+      message.classList.toggle('is-error', isError);
+    }
+
+    function setConnection(isLive) {
+      connection.classList.toggle('is-live', isLive);
+      connectionText.textContent = isLive ? 'in onda' : 'riconnessione...';
+    }
+
+    function updatePlayButton() {
+      const playing = !audio.paused && !audio.ended;
+      playPause.textContent = playing ? 'Pause' : 'Play';
+      playPause.setAttribute('aria-label', playing ? 'Metti in pausa la radio' : 'Avvia la radio');
+    }
+
+    function updateProgress(displaySeconds) {
+      const total = currentState && currentState.duration ? currentState.duration : 0;
+      const pct = total > 0 ? Math.min(100, Math.max(0, displaySeconds / total * 100)) : 0;
+      fill.style.width = `${pct}%`;
+      progressBar.setAttribute('aria-valuenow', String(Math.round(pct)));
+      elapsed.textContent = formatTime(displaySeconds);
+      duration.textContent = formatTime(total);
+      livePosition.textContent = total > 0 ? `${Math.round(pct)}% live` : 'in attesa';
+    }
+
+    function renderLoop() {
+      if (currentState && currentState.track) {
+        const live = targetPosition();
+        const display = audio.paused ? live : audio.currentTime;
+        updateProgress(display);
+
+        if (!audio.paused && Math.abs(audio.currentTime - live) > 2) {
+          seekToLivePosition();
+        }
+      }
+      animationFrame = requestAnimationFrame(renderLoop);
+    }
+
+    function ensureRenderLoop() {
+      if (!animationFrame) animationFrame = requestAnimationFrame(renderLoop);
+    }
+
+    function seekToLivePosition() {
+      if (!currentState || !currentState.track || Number.isNaN(audio.duration)) return;
+      audio.currentTime = targetPosition();
+    }
+
+    async function tryPlay() {
+      if (!currentState || !currentState.track) {
+        setMessage('Nessun brano disponibile al momento.', true);
+        return;
+      }
+
+      retry.classList.remove('is-visible');
+      seekToLivePosition();
+
+      try {
+        await audio.play();
+        setMessage('Riproduzione sincronizzata con la radio.');
+      } catch (error) {
+        setMessage('Il browser ha bloccato o interrotto la riproduzione. Premi Riprova.', true);
+        retry.classList.add('is-visible');
+      }
+    }
+
+    function applyState(state) {
+      currentState = state;
+      clockOffset = state.server_time - Date.now() / 1000;
+      ensureRenderLoop();
+
+      if (!state.track) {
+        title.textContent = 'Nessun MP3 disponibile';
+        index.textContent = '0 / 0';
+        audio.removeAttribute('src');
+        audio.load();
+        updateProgress(0);
+        setMessage('Aggiungi file MP3 nella cartella radio per iniziare.', true);
+        return;
+      }
+
+      title.textContent = state.track.title;
+      index.textContent = `${state.current_index + 1} / ${state.playlist_length}`;
+      duration.textContent = formatTime(state.duration);
+      setMessage(userRequestedPlay ? 'Stato radio aggiornato.' : 'Premi Play per ascoltare dal vivo.');
+
+      const expectedSrc = `/radio/${encodeURIComponent(state.track.filename)}`;
+      const currentSrc = audio.getAttribute('src');
+
+      if (currentSrc !== expectedSrc) {
+        audio.src = expectedSrc;
+        audio.load();
+      } else if (Math.abs(audio.currentTime - targetPosition()) > 2) {
+        seekToLivePosition();
+      }
+
+      updateProgress(targetPosition());
+
+      if (userRequestedPlay) {
+        tryPlay();
+      }
+    }
+
+    async function bootstrap() {
+      try {
+        const response = await fetch('/api/radio/state', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        applyState(await response.json());
+      } catch (error) {
+        setMessage('Impossibile leggere lo stato iniziale della radio.', true);
+        retry.classList.add('is-visible');
+      }
+    }
+
+    audio.addEventListener('loadedmetadata', () => {
+      seekToLivePosition();
+      if (userRequestedPlay) tryPlay();
+    });
+
+    audio.addEventListener('play', updatePlayButton);
+    audio.addEventListener('pause', updatePlayButton);
+    audio.addEventListener('error', () => {
+      setMessage('Errore audio durante il caricamento del brano. Premi Riprova.', true);
+      retry.classList.add('is-visible');
+      updatePlayButton();
+    });
+
+    playPause.addEventListener('click', () => {
+      if (!audio.paused) {
+        userRequestedPlay = false;
+        audio.pause();
+        setMessage('Riproduzione in pausa su questo dispositivo.');
+        return;
+      }
+
+      userRequestedPlay = true;
+      setMessage('Allineamento allo stato live...');
+      socket.emit('request_state');
+      tryPlay();
+    });
+
+    retry.addEventListener('click', () => {
+      retry.classList.remove('is-visible');
+      userRequestedPlay = true;
+      setMessage('Riprovo la sincronizzazione...');
+      socket.emit('request_state');
+      tryPlay();
+      bootstrap();
+    });
+
+    volume.addEventListener('input', () => {
+      audio.volume = Number(volume.value);
+      volumeValue.textContent = `${Math.round(audio.volume * 100)}%`;
+    });
+
+    socket.on('connect', () => {
+      setConnection(true);
+      socket.emit('request_state');
+    });
+
+    socket.on('disconnect', () => {
+      setConnection(false);
+    });
+
+    socket.on('radio_state', applyState);
+    socket.on('radio_update', applyState);
+
+    updatePlayButton();
+    ensureRenderLoop();
+    bootstrap();
+  </script>
+</body>
+</html>

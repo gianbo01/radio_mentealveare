@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin - Mente Alveare Radio</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070a12;
+      --panel: #111827;
+      --panel-soft: #172033;
+      --text: #f7f7fb;
+      --muted: #9da8bd;
+      --line: #263149;
+      --hot: #ffca7a;
+      --accent: #8ee6ff;
+      --danger: #ff8a8a;
+      --ok: #70f0a4;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(circle at 14% 0%, #263a72, transparent 32%), radial-gradient(circle at 90% 10%, #5d2f68, transparent 30%), linear-gradient(160deg, #070a12, #101421 58%, #090b11); color: var(--text); }
+    .shell { width: min(100%, 1080px); margin: 0 auto; padding: 18px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 2px 22px; }
+    h1 { margin: 0; font-size: clamp(28px, 7vw, 54px); line-height: 0.95; letter-spacing: -0.07em; }
+    .sub { margin: 8px 0 0; color: var(--muted); }
+    .logout { border: 1px solid var(--line); border-radius: 999px; padding: 10px 14px; background: #0b1020aa; color: var(--text); cursor: pointer; }
+    main { display: grid; gap: 18px; }
+    .card { border: 1px solid #ffffff1a; border-radius: 28px; padding: clamp(18px, 5vw, 30px); background: linear-gradient(150deg, #151d30f2, #0a0e18f2 72%); box-shadow: 0 30px 90px #0007; }
+    .grid { display: grid; gap: 18px; }
+    label { display: grid; gap: 8px; color: var(--muted); font-size: 14px; }
+    input[type="file"], input[type="text"] { width: 100%; border: 1px solid var(--line); border-radius: 16px; padding: 14px 15px; background: #070b15; color: var(--text); font: inherit; }
+    button { border: 0; border-radius: 18px; padding: 15px 18px; background: linear-gradient(135deg, #ffffff, #dfe9ff); color: #0b1020; font-weight: 950; cursor: pointer; }
+    button[disabled] { cursor: wait; opacity: 0.65; }
+    .status { min-height: 24px; color: var(--muted); }
+    .status.ok { color: var(--ok); }
+    .status.error { color: var(--danger); }
+    .hint { color: var(--muted); font-size: 13px; }
+    .tracks { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+    .track { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; background: #070b1590; }
+    .track strong { display: block; overflow-wrap: anywhere; }
+    .track span { display: block; margin-top: 4px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .delete-track { border: 1px solid #ff8a8a55; border-radius: 13px; padding: 9px 11px; background: #ff8a8a18; color: #ffd2d2; font-size: 13px; }
+    .delete-track:hover { background: #ff8a8a28; }
+    button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+    @media (min-width: 780px) { .shell { padding: 34px; } main { grid-template-columns: 1.1fr 0.9fr; align-items: start; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div>
+        <h1>Admin Radio</h1>
+        <p class="sub">Carica brani MP3 validati e pubblicali nella radio.</p>
+      </div>
+      <form method="post" action="/admin/logout">
+        <button class="logout" type="submit" aria-label="Esci dall'area admin">Logout</button>
+      </form>
+    </header>
+
+    <main>
+      <section class="card" aria-labelledby="addTrackTitle">
+        <h2 id="addTrackTitle">Aggiungi brano</h2>
+        <form id="trackForm" class="grid">
+          <label>
+            File MP3 del brano
+            <input id="track" name="track" type="file" accept="audio/mpeg,.mp3" required>
+          </label>
+          <p class="hint">Massimo upload: {{ max_upload_mb }} MB. Sono accettati solo file MP3 audio leggibili.</p>
+          <button id="submit" type="submit" aria-label="Aggiungi brano alla radio">Aggiungi brano</button>
+          <div id="status" class="status" role="status" aria-live="polite">Pronto.</div>
+        </form>
+      </section>
+
+      <section class="card" aria-labelledby="tracksTitle">
+        <h2 id="tracksTitle">Brani in radio</h2>
+        <p class="hint">File pubblicati in RADIO_DIR. L'eliminazione rimuove il brano dalla radio.</p>
+        <ul id="tracks" class="tracks">
+          {% for track in tracks %}
+            <li class="track">
+              <div><strong>{{ track.filename }}</strong><span>{{ '%.0f'|format(track.duration) }}s</span></div>
+              <button class="delete-track" type="button" data-filename="{{ track.filename }}" aria-label="Elimina {{ track.filename }}">Elimina</button>
+            </li>
+          {% else %}
+            <li class="track"><div><strong>Nessun MP3 pubblicato</strong><span>0s</span></div></li>
+          {% endfor %}
+        </ul>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const form = document.getElementById('trackForm');
+    const fileInput = document.getElementById('track');
+    const statusBox = document.getElementById('status');
+    const submit = document.getElementById('submit');
+    const tracks = document.getElementById('tracks');
+
+    function setStatus(text, type = '') {
+      statusBox.textContent = text;
+      statusBox.className = `status ${type}`.trim();
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>'"]/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;'
+      }[char]));
+    }
+
+    function renderTracks(items) {
+      if (!items || items.length === 0) {
+        tracks.innerHTML = '<li class="track"><div><strong>Nessun MP3 pubblicato</strong><span>0s</span></div></li>';
+        return;
+      }
+      tracks.innerHTML = items.map((track) => (
+        `<li class="track">
+          <div><strong>${escapeHtml(track.filename)}</strong><span>${Math.round(track.duration || 0)}s</span></div>
+          <button class="delete-track" type="button" data-filename="${escapeHtml(track.filename)}" aria-label="Elimina ${escapeHtml(track.filename)}">Elimina</button>
+        </li>`
+      )).join('');
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const file = fileInput.files[0];
+      if (!file) {
+        setStatus('Seleziona un file MP3.', 'error');
+        return;
+      }
+
+      if (!file.name.toLowerCase().endsWith('.mp3')) {
+        setStatus('Sono ammessi solo file con estensione .mp3.', 'error');
+        return;
+      }
+
+      submit.disabled = true;
+      setStatus('Upload e verifica audio in corso...');
+
+      try {
+        const data = new FormData(form);
+        const response = await fetch('/admin/tracks', { method: 'POST', body: data });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) throw new Error(payload.error || 'Errore sconosciuto.');
+
+        setStatus(payload.message, 'ok');
+        renderTracks(payload.tracks);
+        form.reset();
+      } catch (error) {
+        setStatus(error.message, 'error');
+      } finally {
+        submit.disabled = false;
+      }
+    });
+
+    tracks.addEventListener('click', async (event) => {
+      const button = event.target.closest('.delete-track');
+      if (!button) return;
+
+      const filename = button.dataset.filename;
+      if (!filename || !confirm(`Eliminare "${filename}" dalla radio?`)) return;
+
+      button.disabled = true;
+      setStatus(`Eliminazione di ${filename} in corso...`);
+
+      try {
+        const data = new FormData();
+        data.append('filename', filename);
+        const response = await fetch('/admin/tracks/delete', { method: 'POST', body: data });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) throw new Error(payload.error || 'Errore sconosciuto.');
+
+        setStatus(payload.message, 'ok');
+        renderTracks(payload.tracks);
+      } catch (error) {
+        setStatus(error.message, 'error');
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

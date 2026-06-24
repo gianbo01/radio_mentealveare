@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Radio</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; min-height: 100vh; display: grid; place-items: center; padding: 20px; background: radial-gradient(circle at 20% 0%, #263a72, transparent 32%), linear-gradient(160deg, #070a12, #101421); color: #f7f7fb; }
+    main { width: min(100%, 420px); border: 1px solid #ffffff1a; border-radius: 28px; padding: 28px; background: #111827f2; box-shadow: 0 30px 90px #0009; }
+    h1 { margin: 0 0 8px; font-size: clamp(30px, 9vw, 46px); line-height: 0.95; letter-spacing: -0.07em; }
+    p { margin: 0 0 24px; color: #9da8bd; }
+    label { display: grid; gap: 8px; color: #9da8bd; font-size: 14px; }
+    input { width: 100%; border: 1px solid #263149; border-radius: 16px; padding: 14px 15px; background: #070b15; color: #f7f7fb; font: inherit; }
+    button { width: 100%; margin-top: 18px; border: 0; border-radius: 18px; padding: 15px 18px; background: linear-gradient(135deg, #ffffff, #dfe9ff); color: #0b1020; font-weight: 950; cursor: pointer; }
+    .error { margin: 0 0 16px; border: 1px solid #ff8a8a55; border-radius: 14px; padding: 12px; color: #ffb1b1; background: #ff8a8a14; }
+    button:focus-visible, input:focus-visible { outline: 3px solid #8ee6ff; outline-offset: 4px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Admin Radio</h1>
+    <p>Accesso protetto per pubblicare nuovi brani.</p>
+    {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+    <form method="post">
+      <label>
+        Password admin
+        <input name="password" type="password" autocomplete="current-password" required autofocus>
+      </label>
+      <button type="submit" aria-label="Accedi all'amministrazione radio">Accedi</button>
+    </form>
+  </main>
+</body>
+</html>

@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+*.mp3
+!radio/.gitkeep
+
+staging/*
+!staging/.gitkeep
