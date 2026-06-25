@@ -26,6 +26,23 @@ Alias player: `http://localhost:5001/player`.
 
 Admin protetto: `http://localhost:5001/admin`.
 
+## PWA
+
+Il player pubblico espone `static/manifest.json` e i meta tag PWA in `templates/player.html`.
+
+TODO: aggiungere due icone PNG quadrate reali con il logo della radio:
+
+- `static/img/icon-512.png` in formato 512x512.
+- `static/img/icon-192.png` in formato 192x192.
+
+Le icone sono necessarie per il prompt di installazione di Chrome/Android. Non usare placeholder fittizi.
+
+## Ascoltatori
+
+Il server emette l'evento Socket.IO separato `listeners` con il numero di client che stanno effettivamente ascoltando, cioe con audio in play. Il player standalone invia `set_listening` su play, pause, ended e riconnessione.
+
+TODO: aggiornare anche l'embed Aviator (`static/js/radio.js` nell'altro repository) per emettere `set_listening` su play, pause ed ended; finche non lo fa, gli ascoltatori da Aviator non entrano nel conteggio.
+
 ## Docker
 
 ```bash

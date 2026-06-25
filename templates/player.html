@@ -4,8 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mente Alveare Radio</title>
-  <link rel="icon" href="/static/img/favicon.jpg" type="image/jpeg">
-  <link rel="apple-touch-icon" href="/static/img/favicon.jpg">
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#101421">
+  <link rel="icon" type="image/png" href="/static/img/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/img/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Radio">
   <style>
     :root {
       color-scheme: dark;
@@ -232,6 +237,8 @@
 
     .play-button:hover { transform: translateY(-1px); }
     .play-button:active { transform: translateY(1px); }
+    .play-button:disabled { cursor: not-allowed; opacity: 0.5; transform: none; }
+    .play-button.voted { background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
 
     .volume-card {
       display: grid;
@@ -306,6 +313,7 @@
         <span class="dot" aria-hidden="true"></span>
         <span id="connectionText">riconnessione...</span>
       </div>
+      <span id="listeners" class="connection" aria-live="polite">0 in ascolto</span>
     </header>
 
     <main>
@@ -329,6 +337,7 @@
 
         <div class="controls">
           <button id="playPause" class="play-button" type="button" aria-label="Avvia la radio">Play</button>
+          <button id="skip" class="play-button" type="button" disabled>Skip (0/0)</button>
           <div class="volume-card">
             <label class="volume-label" for="volume">
               <span>Volume</span>
@@ -355,10 +364,12 @@
     const duration = document.getElementById('duration');
     const progressBar = document.getElementById('progressBar');
     const playPause = document.getElementById('playPause');
+    const skipBtn = document.getElementById('skip');
     const volume = document.getElementById('volume');
     const volumeValue = document.getElementById('volumeValue');
     const connection = document.getElementById('connection');
     const connectionText = document.getElementById('connectionText');
+    const listenersEl = document.getElementById('listeners');
     const message = document.getElementById('message');
     const retry = document.getElementById('retry');
     const livePosition = document.getElementById('livePosition');
@@ -372,6 +383,8 @@
     let animationFrame = null;
     let fallbackPoll = null;
     let softResyncPoll = null;
+    let hasVoted = false;
+    let lastSkipState = { votes: 0, needed: 0, listening: 0 };
 
     audio.volume = 0.7;
 
@@ -403,10 +416,33 @@
       if (socket.connected) socket.emit('request_state');
     }
 
+    function sendListeningState(isListening) {
+      if (socket.connected) socket.emit('set_listening', Boolean(isListening));
+    }
+
     function updatePlayButton() {
       const playing = !audio.paused && !audio.ended;
       playPause.textContent = playing ? 'Pause' : 'Play';
       playPause.setAttribute('aria-label', playing ? 'Metti in pausa la radio' : 'Avvia la radio');
+      updateSkipAvailability();
+    }
+
+    function setSkipVoted(isVoted) {
+      hasVoted = isVoted;
+      skipBtn.classList.toggle('voted', hasVoted);
+    }
+
+    function updateSkipButton(payload = lastSkipState) {
+      lastSkipState = payload || lastSkipState;
+      const votes = Number(lastSkipState.votes) || 0;
+      const needed = Number(lastSkipState.needed) || 0;
+      skipBtn.textContent = `Skip (${votes}/${needed})`;
+      updateSkipAvailability();
+    }
+
+    function updateSkipAvailability() {
+      const canVote = Boolean(currentState && currentState.track && !audio.paused && !audio.ended && socket.connected);
+      skipBtn.disabled = !canVote;
     }
 
     function updateProgress(displaySeconds) {
@@ -479,6 +515,7 @@
       ensureRenderLoop();
 
       if (!state.track) {
+        setSkipVoted(false);
         currentSource = null;
         pendingSeek = null;
         title.textContent = 'Nessun MP3 disponibile';
@@ -487,6 +524,7 @@
         audio.removeAttribute('src');
         audio.load();
         updateProgress(0);
+        updateSkipAvailability();
         setMessage('Aggiungi file MP3 nella cartella radio per iniziare.', true);
         return;
       }
@@ -506,6 +544,7 @@
         audio.src = nextSource;
         seekTo(offset);
         updateProgress(offset);
+        updateSkipAvailability();
 
         if (userRequestedPlay) {
           tryPlay();
@@ -516,6 +555,7 @@
       }
 
       updateProgress(offset);
+      updateSkipAvailability();
 
       if (userRequestedPlay) {
         tryPlay();
@@ -559,10 +599,17 @@
       if (userRequestedPlay) tryPlay();
     });
 
-    audio.addEventListener('play', updatePlayButton);
-    audio.addEventListener('pause', updatePlayButton);
+    audio.addEventListener('play', () => {
+      updatePlayButton();
+      sendListeningState(true);
+    });
+    audio.addEventListener('pause', () => {
+      updatePlayButton();
+      sendListeningState(false);
+    });
     audio.addEventListener('ended', () => {
       updatePlayButton();
+      sendListeningState(false);
       requestSocketState();
       fetchState({ silent: true });
     });
@@ -587,6 +634,12 @@
       tryPlay();
     });
 
+    skipBtn.addEventListener('click', () => {
+      if (skipBtn.disabled || !socket.connected) return;
+      socket.emit('vote_skip');
+      setSkipVoted(!hasVoted);
+    });
+
     retry.addEventListener('click', () => {
       retry.classList.remove('is-visible');
       userRequestedPlay = true;
@@ -604,16 +657,28 @@
     socket.on('connect', () => {
       setConnection(true);
       stopFallbackPolling();
+      setSkipVoted(false);
+      if (!audio.paused && !audio.ended) sendListeningState(true);
+      updateSkipAvailability();
       requestSocketState();
     });
 
     socket.on('disconnect', () => {
       setConnection(false);
+      updateSkipAvailability();
       startFallbackPolling();
     });
 
     socket.on('radio_state', applyState);
-    socket.on('radio_update', applyState);
+    socket.on('radio_update', (state) => {
+      setSkipVoted(false);
+      applyState(state);
+    });
+    socket.on('listeners', (payload) => {
+      const listening = Number(payload && payload.listening) || 0;
+      listenersEl.textContent = `${listening} in ascolto`;
+    });
+    socket.on('skip_state', updateSkipButton);
 
     updatePlayButton();
     ensureRenderLoop();

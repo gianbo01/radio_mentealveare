@@ -89,12 +89,72 @@ def build_app():
         "current_index": 0,
         "started_at": time.time(),
     }
+    listening_sids = set()
+    skip_votes = set()
+
     def is_origin_allowed(origin):
         if not origin:
             return False
         if allowed_origins == "*":
             return True
         return origin in allowed_origins
+
+    def listeners_payload():
+        with state_lock:
+            return {"listening": len(listening_sids)}
+
+    def broadcast_listeners():
+        socketio.emit("listeners", listeners_payload())
+
+    def needed_votes_unlocked():
+        return (len(listening_sids) // 2) + 1 if listening_sids else 0
+
+    def needed_votes():
+        with state_lock:
+            return needed_votes_unlocked()
+
+    def skip_payload():
+        with state_lock:
+            return {
+                "votes": len(skip_votes),
+                "needed": needed_votes_unlocked(),
+                "listening": len(listening_sids),
+            }
+
+    def broadcast_skip():
+        socketio.emit("skip_state", skip_payload())
+
+    def advance_track_locked(replacement_playlist=None):
+        if replacement_playlist is not None:
+            state["playlist"] = replacement_playlist
+            state["current_index"] = 0
+        else:
+            playlist = state["playlist"]
+            if not playlist:
+                return False
+
+            if state["current_index"] + 1 >= len(playlist):
+                state["playlist"] = load_playlist()
+                state["current_index"] = 0
+            else:
+                state["current_index"] += 1
+
+        state["started_at"] = time.time()
+        skip_votes.clear()
+        return True
+
+    def emit_track_advanced():
+        socketio.emit("radio_update", current_payload())
+        broadcast_skip()
+
+    def advance_track(reason, replacement_playlist=None):
+        with state_lock:
+            advanced = advance_track_locked(replacement_playlist)
+
+        if advanced:
+            emit_track_advanced()
+
+        return advanced
 
     @app.after_request
     def add_radio_cors_headers(response):
@@ -171,11 +231,12 @@ def build_app():
                 state["current_index"] = 0
             else:
                 deleted_current = current_track is not None and current_track["filename"] == filename
-                state["playlist"] = new_playlist
-                state["current_index"] = 0
-                state["started_at"] = time.time()
+                if not deleted_current:
+                    state["playlist"] = new_playlist
+                    state["current_index"] = 0
+                    state["started_at"] = time.time()
 
-            return len(state["playlist"]), deleted_current
+            return len(new_playlist if deleted_current else state["playlist"]), deleted_current, new_playlist
 
     def current_payload():
         with state_lock:
@@ -270,6 +331,7 @@ def build_app():
 
             socketio.sleep(sleep_for)
 
+            advanced = False
             with state_lock:
                 playlist = state["playlist"]
                 if not playlist:
@@ -279,16 +341,10 @@ def build_app():
                 if time.time() - state["started_at"] + 0.05 < track["duration"]:
                     continue
 
-                if state["current_index"] + 1 >= len(playlist):
-                    playlist = load_playlist()
-                    state["playlist"] = playlist
-                    state["current_index"] = 0
-                else:
-                    state["current_index"] += 1
+                advanced = advance_track_locked()
 
-                state["started_at"] = time.time()
-
-            socketio.emit("radio_update", current_payload())
+            if advanced:
+                emit_track_advanced()
 
     @app.route("/")
     @app.route("/player")
@@ -384,7 +440,7 @@ def build_app():
 
         try:
             target.unlink()
-            total_tracks, deleted_current = delete_track_from_playlist(target.name)
+            total_tracks, deleted_current, replacement_playlist = delete_track_from_playlist(target.name)
             payload = {
                 "ok": True,
                 "message": f"Brano eliminato: {target.name}",
@@ -393,7 +449,7 @@ def build_app():
                 "playlist_length": total_tracks,
             }
             if deleted_current:
-                socketio.emit("radio_update", current_payload())
+                advance_track("delete", replacement_playlist)
             return jsonify(payload)
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 500
@@ -417,10 +473,69 @@ def build_app():
     @socketio.on("connect")
     def on_connect():
         emit("radio_state", current_payload())
+        emit("listeners", listeners_payload())
+        emit("skip_state", skip_payload())
 
     @socketio.on("request_state")
     def on_request_state():
         emit("radio_state", current_payload())
+
+    @socketio.on("set_listening")
+    def on_set_listening(is_listening):
+        should_advance = False
+        with state_lock:
+            if bool(is_listening):
+                listening_sids.add(request.sid)
+            else:
+                listening_sids.discard(request.sid)
+                skip_votes.discard(request.sid)
+            should_advance = bool(listening_sids) and len(skip_votes) >= needed_votes_unlocked()
+
+        if should_advance:
+            advance_track("vote")
+        else:
+            broadcast_skip()
+
+        broadcast_listeners()
+
+    @socketio.on("vote_skip")
+    def on_vote_skip():
+        should_advance = False
+        listeners_changed = False
+        with state_lock:
+            if request.sid not in listening_sids:
+                listening_sids.add(request.sid)
+                listeners_changed = True
+
+            if request.sid in skip_votes:
+                skip_votes.discard(request.sid)
+            else:
+                skip_votes.add(request.sid)
+
+            should_advance = bool(listening_sids) and len(skip_votes) >= needed_votes_unlocked()
+
+        if should_advance:
+            advance_track("vote")
+        else:
+            broadcast_skip()
+
+        if listeners_changed:
+            broadcast_listeners()
+
+    @socketio.on("disconnect")
+    def on_disconnect():
+        should_advance = False
+        with state_lock:
+            listening_sids.discard(request.sid)
+            skip_votes.discard(request.sid)
+            should_advance = bool(listening_sids) and len(skip_votes) >= needed_votes_unlocked()
+
+        if should_advance:
+            advance_track("vote")
+        else:
+            broadcast_skip()
+
+        broadcast_listeners()
 
     reset_playlist()
     socketio.start_background_task(radio_worker)
