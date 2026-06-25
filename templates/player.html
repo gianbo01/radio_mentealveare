@@ -360,6 +360,7 @@
     let clockOffset = 0;
     let userRequestedPlay = false;
     let animationFrame = null;
+    let statePoll = null;
 
     audio.volume = 0.7;
 
@@ -386,6 +387,10 @@
     function setConnection(isLive) {
       connection.classList.toggle('is-live', isLive);
       connectionText.textContent = isLive ? 'in onda' : 'riconnessione...';
+    }
+
+    function requestSocketState() {
+      if (socket.connected) socket.emit('request_state');
     }
 
     function updatePlayButton() {
@@ -444,9 +449,10 @@
       }
     }
 
-    function applyState(state) {
+    function applyState(state, options = {}) {
       currentState = state;
       clockOffset = state.server_time - Date.now() / 1000;
+      setConnection(true);
       ensureRenderLoop();
 
       if (!state.track) {
@@ -462,7 +468,9 @@
       title.textContent = state.track.title;
       index.textContent = `${state.current_index + 1} / ${state.playlist_length}`;
       duration.textContent = formatTime(state.duration);
-      setMessage(userRequestedPlay ? 'Stato radio aggiornato.' : 'Premi Play per ascoltare dal vivo.');
+      if (!options.silent) {
+        setMessage(userRequestedPlay ? 'Stato radio aggiornato.' : 'Premi Play per ascoltare dal vivo.');
+      }
 
       const expectedSrc = `/radio/${encodeURIComponent(state.track.filename)}`;
       const currentSrc = audio.getAttribute('src');
@@ -481,15 +489,23 @@
       }
     }
 
-    async function bootstrap() {
+    async function fetchState(options = {}) {
       try {
         const response = await fetch('/api/radio/state', { cache: 'no-store' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        applyState(await response.json());
+        applyState(await response.json(), options);
       } catch (error) {
-        setMessage('Impossibile leggere lo stato iniziale della radio.', true);
-        retry.classList.add('is-visible');
+        setConnection(false);
+        if (!options.silent) {
+          setMessage('Impossibile leggere lo stato della radio. Premi Riprova.', true);
+          retry.classList.add('is-visible');
+        }
       }
+    }
+
+    function startStatePolling() {
+      if (statePoll) return;
+      statePoll = setInterval(() => fetchState({ silent: true }), 5000);
     }
 
     audio.addEventListener('loadedmetadata', () => {
@@ -499,6 +515,11 @@
 
     audio.addEventListener('play', updatePlayButton);
     audio.addEventListener('pause', updatePlayButton);
+    audio.addEventListener('ended', () => {
+      requestSocketState();
+      fetchState({ silent: true });
+      setTimeout(() => fetchState({ silent: true }), 750);
+    });
     audio.addEventListener('error', () => {
       setMessage('Errore audio durante il caricamento del brano. Premi Riprova.', true);
       retry.classList.add('is-visible');
@@ -515,7 +536,8 @@
 
       userRequestedPlay = true;
       setMessage('Allineamento allo stato live...');
-      socket.emit('request_state');
+      requestSocketState();
+      fetchState({ silent: true });
       tryPlay();
     });
 
@@ -523,9 +545,9 @@
       retry.classList.remove('is-visible');
       userRequestedPlay = true;
       setMessage('Riprovo la sincronizzazione...');
-      socket.emit('request_state');
+      requestSocketState();
       tryPlay();
-      bootstrap();
+      fetchState();
     });
 
     volume.addEventListener('input', () => {
@@ -535,7 +557,7 @@
 
     socket.on('connect', () => {
       setConnection(true);
-      socket.emit('request_state');
+      requestSocketState();
     });
 
     socket.on('disconnect', () => {
@@ -547,7 +569,8 @@
 
     updatePlayButton();
     ensureRenderLoop();
-    bootstrap();
+    startStatePolling();
+    fetchState();
   </script>
 </body>
 </html>
