@@ -55,18 +55,13 @@ def validate_audio_file(path):
 
 def title_from_audio(path):
     audio = MutagenFile(path, easy=True)
-    title = None
     duration = DEFAULT_DURATION
 
     if audio is not None:
         if getattr(audio, "info", None) is not None and getattr(audio.info, "length", None):
             duration = float(audio.info.length)
-        titles = audio.tags.get("title") if audio.tags else None
-        if titles:
-            title = str(titles[0])
 
-    if not title:
-        title = Path(path).stem.replace("_", " ")
+    title = Path(path).stem.replace("-", " ")
 
     return title, duration
 
