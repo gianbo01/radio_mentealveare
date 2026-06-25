@@ -355,11 +355,12 @@
     const message = document.getElementById('message');
     const retry = document.getElementById('retry');
     const livePosition = document.getElementById('livePosition');
-    const DRIFT_TOLERANCE = 1.5;
+    const MAX_SYNC_DRIFT_SECONDS = 2;
 
     let currentState = null;
-    let currentFilename = null;
-    let anchor = null;
+    let currentSource = null;
+    let pendingSeek = null;
+    let clockOffset = 0;
     let userRequestedPlay = false;
     let animationFrame = null;
     let fallbackPoll = null;
@@ -367,21 +368,12 @@
 
     audio.volume = 0.7;
 
-    function updateAnchor(state) {
-      anchor = {
-        filename: state.track.filename,
-        startedAt: state.started_at,
-        serverTime: state.server_time,
-        clientMonoAtReceipt: performance.now() / 1000,
-      };
-    }
-
-    function expectedOffset() {
-      if (!currentState || !currentState.track || !anchor) return 0;
-      const elapsedAtReceipt = anchor.serverTime - anchor.startedAt;
-      const elapsedSinceReceipt = performance.now() / 1000 - anchor.clientMonoAtReceipt;
-      const offset = elapsedAtReceipt + elapsedSinceReceipt;
-      return Math.max(0, Math.min(currentState.duration || 0, offset));
+    function getRadioOffset(state) {
+      if (!state || !state.track) return 0;
+      const estimatedServerNow = Date.now() / 1000 + clockOffset;
+      const total = Number(state.duration || state.track.duration || 0);
+      const offset = Math.max(0, estimatedServerNow - Number(state.started_at || 0));
+      return total ? Math.min(offset, Math.max(0, total - 0.2)) : offset;
     }
 
     function formatTime(value) {
@@ -422,7 +414,7 @@
 
     function renderLoop() {
       if (currentState && currentState.track) {
-        const live = expectedOffset();
+        const live = getRadioOffset(currentState);
         const display = audio.paused ? live : audio.currentTime;
         updateProgress(display);
       }
@@ -434,19 +426,25 @@
     }
 
     function softResync() {
-      if (!currentState || !currentState.track || !anchor || Number.isNaN(audio.duration)) return;
-      const target = expectedOffset();
-      if (Math.abs(audio.currentTime - target) >= DRIFT_TOLERANCE) {
-        setAudioOffset(target);
+      if (!currentState || !currentState.track) return;
+      const target = getRadioOffset(currentState);
+      if (Math.abs(audio.currentTime - target) > MAX_SYNC_DRIFT_SECONDS) {
+        seekTo(target);
       }
     }
 
-    function setAudioOffset(offset) {
-      try {
-        audio.currentTime = offset;
-      } catch (error) {
-        // Some browsers reject seeks before metadata; loadedmetadata will retry.
+    function seekTo(offset) {
+      pendingSeek = offset;
+      if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        applyPendingSeek();
       }
+    }
+
+    function applyPendingSeek() {
+      if (pendingSeek === null) return;
+      const total = Number(currentState?.duration || currentState?.track?.duration || audio.duration || pendingSeek || 0);
+      audio.currentTime = Math.min(pendingSeek, Math.max(0, total - 0.2));
+      pendingSeek = null;
     }
 
     async function tryPlay() {
@@ -469,12 +467,13 @@
 
     function applyState(state, options = {}) {
       currentState = state;
+      clockOffset = Number(state.server_time || 0) - Date.now() / 1000;
       setConnection(true);
       ensureRenderLoop();
 
       if (!state.track) {
-        currentFilename = null;
-        anchor = null;
+        currentSource = null;
+        pendingSeek = null;
         title.textContent = 'Nessun MP3 disponibile';
         index.textContent = '0 / 0';
         audio.pause();
@@ -492,20 +491,24 @@
         setMessage(userRequestedPlay ? 'Stato radio aggiornato.' : 'Premi Play per ascoltare dal vivo.');
       }
 
-      const nextFilename = state.track.filename;
-      const isSameTrack = nextFilename === currentFilename;
-      updateAnchor(state);
+      const nextSource = state.track.url || `/radio/${encodeURIComponent(state.track.filename)}`;
+      const offset = getRadioOffset(state);
 
-      if (isSameTrack) {
-        softResync();
+      if (nextSource !== currentSource) {
+        currentSource = nextSource;
+        audio.src = nextSource;
+        seekTo(offset);
+        updateProgress(offset);
+
+        if (userRequestedPlay) {
+          tryPlay();
+        }
+        return;
       } else {
-        currentFilename = nextFilename;
-        audio.src = state.track.url;
-        audio.load();
-        setAudioOffset(expectedOffset());
+        softResync();
       }
 
-      updateProgress(expectedOffset());
+      updateProgress(offset);
 
       if (userRequestedPlay) {
         tryPlay();
@@ -541,17 +544,21 @@
       if (softResyncPoll) return;
       softResyncPoll = setInterval(() => {
         if (socket.connected && !audio.paused && !audio.ended) softResync();
-      }, 15000);
+      }, 1000);
     }
 
     audio.addEventListener('loadedmetadata', () => {
-      softResync();
+      applyPendingSeek();
       if (userRequestedPlay) tryPlay();
     });
 
     audio.addEventListener('play', updatePlayButton);
     audio.addEventListener('pause', updatePlayButton);
-    audio.addEventListener('ended', updatePlayButton);
+    audio.addEventListener('ended', () => {
+      updatePlayButton();
+      requestSocketState();
+      fetchState({ silent: true });
+    });
     audio.addEventListener('error', () => {
       setMessage('Errore audio durante il caricamento del brano. Premi Riprova.', true);
       retry.classList.add('is-visible');
