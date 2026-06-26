@@ -378,12 +378,14 @@
 
     let currentState = null;
     let currentSource = null;
-    let pendingSeek = null;
+    let pendingOffset = null;
     let clockOffset = 0;
     let userRequestedPlay = false;
     let animationFrame = null;
     let fallbackPoll = null;
     let softResyncPoll = null;
+    let loadToken = 0;
+    let lastTrackSeq = -1;
     let hasVoted = false;
     let lastSkipState = { votes: 0, needed: 0, listening: 0 };
 
@@ -478,38 +480,49 @@
     }
 
     function seekTo(offset) {
-      pendingSeek = offset;
+      pendingOffset = offset;
       if (Number.isFinite(audio.duration) && audio.duration > 0) {
-        applyPendingSeek();
+        applyPendingOffset();
       }
     }
 
-    function applyPendingSeek() {
-      if (pendingSeek === null) return;
-      const total = Number(currentState?.duration || currentState?.track?.duration || audio.duration || pendingSeek || 0);
-      audio.currentTime = Math.min(pendingSeek, Math.max(0, total - 0.2));
-      pendingSeek = null;
+    function applyPendingOffset() {
+      if (pendingOffset === null) return;
+      const total = Number(currentState?.duration || currentState?.track?.duration || audio.duration || pendingOffset || 0);
+      audio.currentTime = Math.min(pendingOffset, Math.max(0, total - 0.2));
+      pendingOffset = null;
     }
 
-    async function tryPlay() {
+    function startPlayback(token) {
       if (!currentState || !currentState.track) {
         setMessage('Nessun brano disponibile al momento.', true);
         return;
       }
+      if (token !== loadToken) return;
+      if (pendingOffset !== null) {
+        if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+        applyPendingOffset();
+      }
 
       retry.classList.remove('is-visible');
-      softResync();
-
-      try {
-        await audio.play();
-        setMessage('Riproduzione sincronizzata con la radio.');
-      } catch (error) {
-        setMessage('Il browser ha bloccato o interrotto la riproduzione. Premi Riprova.', true);
-        retry.classList.add('is-visible');
-      }
+      audio.play()
+        .then(() => {
+          if (token === loadToken) setMessage('Riproduzione sincronizzata con la radio.');
+        })
+        .catch((error) => {
+          if (error && error.name === 'AbortError') return;
+          setMessage('Riproduzione bloccata dal browser. Premi Riprova.', true);
+          retry.classList.add('is-visible');
+        });
     }
 
     function applyState(state, options = {}) {
+      const seq = Number(state && state.track_seq);
+      if (Number.isFinite(seq)) {
+        if (seq < lastTrackSeq) return;
+        lastTrackSeq = Math.max(lastTrackSeq, seq);
+      }
+
       currentState = state;
       clockOffset = Number(state.server_time || 0) - Date.now() / 1000;
       setConnection(true);
@@ -518,7 +531,8 @@
       if (!state.track) {
         setSkipVoted(false);
         currentSource = null;
-        pendingSeek = null;
+        pendingOffset = null;
+        loadToken += 1;
         title.textContent = 'Nessun MP3 disponibile';
         index.textContent = '0 / 0';
         audio.pause();
@@ -542,14 +556,12 @@
 
       if (nextSource !== currentSource) {
         currentSource = nextSource;
+        loadToken += 1;
         audio.src = nextSource;
-        seekTo(offset);
+        pendingOffset = offset;
+        audio.load();
         updateProgress(offset);
         updateSkipAvailability();
-
-        if (userRequestedPlay) {
-          tryPlay();
-        }
         return;
       } else {
         softResync();
@@ -558,8 +570,8 @@
       updateProgress(offset);
       updateSkipAvailability();
 
-      if (userRequestedPlay) {
-        tryPlay();
+      if (userRequestedPlay && audio.paused && !audio.ended) {
+        startPlayback(loadToken);
       }
     }
 
@@ -596,23 +608,18 @@
     }
 
     audio.addEventListener('loadedmetadata', () => {
-      applyPendingSeek();
-      if (userRequestedPlay) tryPlay();
+      applyPendingOffset();
+      if (userRequestedPlay) startPlayback(loadToken);
     });
 
     audio.addEventListener('play', () => {
       updatePlayButton();
-      sendListeningState(true);
     });
     audio.addEventListener('pause', () => {
       updatePlayButton();
-      sendListeningState(false);
     });
     audio.addEventListener('ended', () => {
       updatePlayButton();
-      sendListeningState(false);
-      requestSocketState();
-      fetchState({ silent: true });
     });
     audio.addEventListener('error', () => {
       setMessage('Errore audio durante il caricamento del brano. Premi Riprova.', true);
@@ -623,16 +630,18 @@
     playPause.addEventListener('click', () => {
       if (!audio.paused) {
         userRequestedPlay = false;
+        sendListeningState(false);
         audio.pause();
         setMessage('Riproduzione in pausa su questo dispositivo.');
         return;
       }
 
       userRequestedPlay = true;
+      sendListeningState(true);
       setMessage('Allineamento allo stato live...');
       requestSocketState();
       fetchState({ silent: true });
-      tryPlay();
+      startPlayback(loadToken);
     });
 
     skipBtn.addEventListener('click', () => {
@@ -644,9 +653,10 @@
     retry.addEventListener('click', () => {
       retry.classList.remove('is-visible');
       userRequestedPlay = true;
+      sendListeningState(true);
       setMessage('Riprovo la sincronizzazione...');
       requestSocketState();
-      tryPlay();
+      startPlayback(loadToken);
       fetchState();
     });
 
@@ -659,7 +669,7 @@
       setConnection(true);
       stopFallbackPolling();
       setSkipVoted(false);
-      if (!audio.paused && !audio.ended) sendListeningState(true);
+      sendListeningState(userRequestedPlay);
       updateSkipAvailability();
       requestSocketState();
     });
@@ -672,6 +682,8 @@
 
     socket.on('radio_state', applyState);
     socket.on('radio_update', (state) => {
+      const seq = Number(state && state.track_seq);
+      if (Number.isFinite(seq) && seq <= lastTrackSeq) return;
       setSkipVoted(false);
       applyState(state);
     });

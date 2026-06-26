@@ -88,6 +88,7 @@ def build_app():
         "playlist": [],
         "current_index": 0,
         "started_at": time.time(),
+        "track_seq": 0,
     }
     listening_sids = set()
     skip_votes = set()
@@ -140,6 +141,7 @@ def build_app():
                 state["current_index"] += 1
 
         state["started_at"] = time.time()
+        state["track_seq"] += 1
         skip_votes.clear()
         return True
 
@@ -243,6 +245,7 @@ def build_app():
             playlist = list(state["playlist"])
             current_index = state["current_index"]
             started_at = state["started_at"]
+            track_seq = state["track_seq"]
 
             if playlist:
                 track = playlist[current_index]
@@ -256,6 +259,7 @@ def build_app():
                 "current_index": current_index,
                 "playlist_length": len(playlist),
                 "started_at": started_at,
+                "track_seq": track_seq,
                 "duration": duration,
                 "track": track,
             }
