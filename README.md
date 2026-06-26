@@ -30,12 +30,10 @@ Admin protetto: `http://localhost:5001/admin`.
 
 Il player pubblico espone `static/manifest.json` e i meta tag PWA in `templates/player.html`.
 
-TODO: aggiungere due icone PNG quadrate reali con il logo della radio:
+Le icone PWA sono generate dal logo della radio:
 
 - `static/img/icon-512.png` in formato 512x512.
 - `static/img/icon-192.png` in formato 192x192.
-
-Le icone sono necessarie per il prompt di installazione di Chrome/Android. Non usare placeholder fittizi.
 
 ## Ascoltatori
 
